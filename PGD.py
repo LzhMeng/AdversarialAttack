@@ -5,11 +5,10 @@ from PIL import Image
 import json
 import numpy as np
 from PIL import ImageDraw, ImageFont, Image
-
+import tqdm
 # 加载预训练的ResNet18模型
 model = models.resnet18(pretrained=True)
 model.eval()  # 设置为评估模式
-
 # 定义图像预处理流程
 preprocess = transforms.Compose([
     transforms.Resize(256),
@@ -18,7 +17,6 @@ preprocess = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225])
 ])
-
 # 加载并预处理图像
 img = Image.open('./images/ILSVRC2012_val_00000248.png').convert('RGB')
 input_tensor = preprocess(img)
@@ -66,28 +64,20 @@ def pgd_attack(model, images, labels, criterion,epsilon=8/255, alpha=2/255,itera
     if random_start:
         # 随机初始化扰动（均匀分布）
         perturbed_images =  perturbed_images + torch.empty_like(perturbed_images).uniform_(-epsilon, epsilon)
-        # perturbed_images = torch.clamp(perturbed_images, 0, 1).detach() #  # 约束到合法像素范围[0,1]
-
     # 多次迭代生成对抗样本
-    for _ in range(iterations):
+    for _ in tqdm.tqdm(range(iterations)):
         perturbed_images.requires_grad = True # 计算输入样本的梯度
-        
         # 计算损失，反向传播
         outputs = model(perturbed_images)
         loss = criterion(outputs, labels)
         model.zero_grad()
         loss.backward()
-
          # 生成对抗样本
         with torch.no_grad():
             data_grads = perturbed_images.grad.data  # 获取到关于样本的梯度
             perturbed_images = perturbed_images + alpha * data_grads.sign()
-
              # 对抗样本投影到ε邻域内
             perturbed_images = torch.clamp(perturbed_images, images - epsilon, images + epsilon)
-    
-            
-            
     return perturbed_images.detach() # 返回不包含梯度信息的对抗样本
 
 def save_adv(x_adv):
