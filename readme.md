@@ -14,7 +14,7 @@ conda activate pytorch-env
 
 3. 安装PyTorch：根据CUDA版本，从官网获取对应的安装命令。例如：
 ```bash
-conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c conda-forge
+pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 4. 安装相关工具包：
