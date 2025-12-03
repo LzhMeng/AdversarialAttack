@@ -5,6 +5,7 @@ from PIL import Image
 import json
 import numpy as np
 from PIL import ImageDraw, ImageFont, Image
+
 # 加载预训练的ResNet18模型
 model = models.resnet18(pretrained=True)
 model.eval()  # 设置为评估模式
@@ -19,7 +20,7 @@ preprocess = transforms.Compose([
 ])
 
 # 加载并预处理图像
-img = Image.open('./images/ILSVRC2012_val_00001299.png').convert('RGB')
+img = Image.open('./images/ILSVRC2012_val_00000248.png').convert('RGB')
 input_tensor = preprocess(img)
 input_batch = input_tensor.unsqueeze(0)  # 增加batch维度
 
@@ -45,7 +46,7 @@ def get_model_out(model, input_batch):
     return top5_catid[0],labels[str(top5_catid[0].item())][1],top5_prob[0].item()
 
 # 定义 PGD 攻击函数
-def fgsm_attack(model, images, labels, criterion,epsilon=8/255, alpha=8/255,random_start=True):
+def pgd_attack(model, images, labels, criterion,epsilon=8/255, alpha=2/255,iterations=10,random_start=True):
     """
     pgd 攻击函数
     :param model: 受害者模型
@@ -61,22 +62,29 @@ def fgsm_attack(model, images, labels, criterion,epsilon=8/255, alpha=8/255,rand
     # 克隆输入
     perturbed_images = images.clone()
 
+     # 是否初始化对抗样本
+    if random_start:
+        # 随机初始化扰动（均匀分布）
+        perturbed_images =  perturbed_images + torch.empty_like(perturbed_images).uniform_(-epsilon, epsilon)
+        # perturbed_images = torch.clamp(perturbed_images, 0, 1).detach() #  # 约束到合法像素范围[0,1]
 
-    perturbed_images.requires_grad = True # 计算输入样本的梯度
-    
-    # 计算损失，反向传播
-    outputs = model(perturbed_images)
-    loss = criterion(outputs, labels)
-    model.zero_grad()
-    loss.backward()
+    # 多次迭代生成对抗样本
+    for _ in range(iterations):
+        perturbed_images.requires_grad = True # 计算输入样本的梯度
+        
+        # 计算损失，反向传播
+        outputs = model(perturbed_images)
+        loss = criterion(outputs, labels)
+        model.zero_grad()
+        loss.backward()
 
-     # 生成对抗样本
-    with torch.no_grad():
-        data_grads = perturbed_images.grad.data  # 获取到关于样本的梯度
-        perturbed_images = perturbed_images + alpha * data_grads.sign()
+         # 生成对抗样本
+        with torch.no_grad():
+            data_grads = perturbed_images.grad.data  # 获取到关于样本的梯度
+            perturbed_images = perturbed_images + alpha * data_grads.sign()
 
-         # 对抗样本投影到ε邻域内
-        perturbed_images = torch.clamp(perturbed_images, images - epsilon, images + epsilon)
+             # 对抗样本投影到ε邻域内
+            perturbed_images = torch.clamp(perturbed_images, images - epsilon, images + epsilon)
     
             
             
@@ -139,7 +147,7 @@ def save_image(input_batch,x_adv,label_o,top1_o_prob,label_a,top1_a_prob):
     print(f"Saved comparison to {out_path}")
 print(f"Ori label:")
 label,tex_o,prob_o = get_model_out(model, input_batch)
-x_adv = fgsm_attack(model, input_batch, label.unsqueeze(0), nn.CrossEntropyLoss())
+x_adv = pgd_attack(model, input_batch, label.unsqueeze(0), nn.CrossEntropyLoss())
 
 save_adv(x_adv)
 print(f"After Attack label:")
